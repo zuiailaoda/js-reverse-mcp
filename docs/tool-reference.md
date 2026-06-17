@@ -280,11 +280,11 @@ so returned values have to JSON-serializable. When execution is paused at a brea
 
 ### `set_breakpoint_on_text`
 
-**Description:** Sets a breakpoint on specific code (function name, statement, etc.) by searching loaded scripts and automatically determining a position. Works with both normal and minified URL-backed scripts. Inline/eval scripts without a URL can be found but cannot receive this persistent URL breakpoint. Breakpoints persist across page navigations when the URL can be matched again.
+**Description:** Sets a breakpoint on specific code (function name, statement, etc.) by searching loaded scripts and automatically determining a position. Optionally pass condition to reduce noisy hits after the code location is already precise; prefer text/urlFilter/occurrence for locating the breakpoint, and use condition only as a simple synchronous guard. Works with both normal and minified URL-backed scripts. Inline/eval scripts without a URL can be found but cannot receive this persistent URL breakpoint. Breakpoints persist across page navigations when the URL can be matched again.
 
 **Parameters:**
 
-- **condition** (string) _(optional)_: Optional condition expression. Breakpoint only triggers when this evaluates to true.
+- **condition** (string) _(optional)_: Optional synchronous JavaScript condition evaluated in the breakpoint call frame. Use only as a simple guard after choosing a precise code location; avoid complex logic, async work, or side effects. The breakpoint pauses only when this expression evaluates to true.
 - **occurrence** (integer) _(optional)_: Which occurrence to break on (1 = first, 2 = second, etc.).
 - **text** (string) **(required)**: The code text to find and set breakpoint on (e.g., "function myFunc", "fetchData(", "apiCall").
 - **urlFilter** (string) _(optional)_: Only search in scripts whose URL contains this string (case-insensitive).

@@ -1126,7 +1126,7 @@ export const step = defineTool({
 export const setBreakpointOnText = defineTool({
   name: 'set_breakpoint_on_text',
   description:
-    'Sets a breakpoint on specific code (function name, statement, etc.) by searching loaded scripts and automatically determining a position. Works with both normal and minified URL-backed scripts. Inline/eval scripts without a URL can be found but cannot receive this persistent URL breakpoint. Breakpoints persist across page navigations when the URL can be matched again.',
+    'Sets a breakpoint on specific code (function name, statement, etc.) by searching loaded scripts and automatically determining a position. Optionally pass condition to reduce noisy hits after the code location is already precise; prefer text/urlFilter/occurrence for locating the breakpoint, and use condition only as a simple synchronous guard. Works with both normal and minified URL-backed scripts. Inline/eval scripts without a URL can be found but cannot receive this persistent URL breakpoint. Breakpoints persist across page navigations when the URL can be matched again.',
   annotations: {
     title: 'Set Breakpoint on Text',
     category: ToolCategory.REVERSE_ENGINEERING,
@@ -1154,7 +1154,7 @@ export const setBreakpointOnText = defineTool({
       .string()
       .optional()
       .describe(
-        'Optional condition expression. Breakpoint only triggers when this evaluates to true.',
+        'Optional synchronous JavaScript condition evaluated in the breakpoint call frame. Use only as a simple guard after choosing a precise code location; avoid complex logic, async work, or side effects. The breakpoint pauses only when this expression evaluates to true.',
       ),
   },
   handler: async (request, response, context) => {
