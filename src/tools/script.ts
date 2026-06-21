@@ -16,6 +16,7 @@ import {defineTool} from './ToolDefinition.js';
 
 // Default script evaluation timeout in milliseconds (30 seconds)
 const DEFAULT_SCRIPT_TIMEOUT = 30000;
+const INLINE_EVAL_RESULT_LIMIT = 8192;
 const MAX_LOCAL_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_PAUSED_LOCAL_FILE_BYTES = 512 * 1024;
 
@@ -98,7 +99,7 @@ async function loadLocalFile(filePath: string): Promise<LocalFileInput> {
 export const evaluateScript = defineTool({
   name: 'evaluate_script',
   description: `Evaluate a JavaScript function inside the currently selected page. Returns the response as JSON
-so returned values have to JSON-serializable. When execution is paused at a breakpoint, automatically evaluates in the paused call frame context. Use localFilePath when the function needs one local data file, commonly a network body or JSON exported by another tool. The MCP server reads the file and passes it as localFile; browser JavaScript does not read local paths.`,
+so returned values have to JSON-serializable. Inline JSON results are bounded; use outputFile for exact large results. When execution is paused at a breakpoint, automatically evaluates in the paused call frame context. Use localFilePath when the function needs one local data file, commonly a network body or JSON exported by another tool. The MCP server reads the file and passes it as localFile; browser JavaScript does not read local paths.`,
   annotations: {
     category: ToolCategory.DEBUGGING,
     readOnlyHint: false,
@@ -250,8 +251,19 @@ If localFilePath is provided, the function receives one argument: \`async ({ loc
           `[Binary Data: ${Buffer.from(parsed.data, 'base64').length} bytes. Use outputFile to save to disk.]`,
         );
       } else {
+        const data = parsed.data ?? 'undefined';
+        const truncated = data.length > INLINE_EVAL_RESULT_LIMIT;
+        if (truncated) {
+          response.appendResponseLine(
+            `Result is ${data.length} chars; inline output is truncated to ${INLINE_EVAL_RESULT_LIMIT} chars. Re-run with outputFile to save the exact result.`,
+          );
+        }
         response.appendResponseLine('```json');
-        response.appendResponseLine(`${parsed.data ?? 'undefined'}`);
+        response.appendResponseLine(
+          truncated
+            ? `${data.slice(0, INLINE_EVAL_RESULT_LIMIT)}... <truncated ${data.length - INLINE_EVAL_RESULT_LIMIT} chars>`
+            : data,
+        );
         response.appendResponseLine('```');
       }
     };
