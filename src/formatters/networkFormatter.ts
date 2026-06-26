@@ -449,6 +449,13 @@ export async function exportNetworkRequestPart(
         summary: `Exported full network request snapshot (${data.length} bytes).`,
       };
     }
+    default: {
+      // Never return undefined for an unrecognized part — that surfaces as a
+      // cryptic "Cannot read properties of undefined (reading 'data')" upstream.
+      throw new Error(
+        `Unknown outputPart "${part as string}". Expected one of: responseHeaders, responseBody, requestBody, queryParams, all.`,
+      );
+    }
   }
 }
 

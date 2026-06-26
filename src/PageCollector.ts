@@ -159,6 +159,13 @@ export const MAX_CACHED_TOTAL_BYTES = 50 * 1024 * 1024;
 
 const BODY_CAPTURE_TIMEOUT_MS = 5000;
 
+/**
+ * Upper bound on retained per-page initiator entries. Initiators are no longer
+ * cleared on navigation, so this FIFO cap (oldest dropped first) keeps the map
+ * from growing without limit on long-lived pages.
+ */
+const MAX_INITIATOR_ENTRIES = 5000;
+
 type WithSymbolId<T> = T & {
   [stableIdSymbol]?: number;
 };
@@ -280,7 +287,12 @@ export class PageCollector<T> {
     }
 
     const data: T[] = [];
-    for (let index = this.#maxNavigationSaved; index >= 0; index--) {
+    // Return every retained navigation bucket, not a fixed window. Collectors
+    // that trim on navigation (e.g. console) stay bounded; the network
+    // collector keeps all buckets until the page closes, so a request stays
+    // reachable as long as its object is alive — which is also what the eagerly
+    // cached response body relies on.
+    for (let index = navigations.length - 1; index >= 0; index--) {
       if (navigations[index]) {
         data.push(...navigations[index]);
       }
@@ -708,6 +720,15 @@ export class NetworkCollector extends PageCollector<HTTPRequest> {
             event.requestId,
             event.initiator as RequestInitiator,
           );
+          // Bound memory: drop oldest entries beyond the cap (Map preserves
+          // insertion order, so the first key is the oldest).
+          while (initiatorMap.size > MAX_INITIATOR_ENTRIES) {
+            const oldest = initiatorMap.keys().next().value;
+            if (oldest === undefined) {
+              break;
+            }
+            initiatorMap.delete(oldest);
+          }
         }
 
         // Map CDP request ID to Playwright Request via URL+method matching
@@ -830,10 +851,9 @@ export class NetworkCollector extends PageCollector<HTTPRequest> {
       navigations.unshift([]);
     }
 
-    // Clear old initiator data on navigation
-    const initiatorMap = this.#initiators.get(page);
-    if (initiatorMap) {
-      initiatorMap.clear();
-    }
+    // Do NOT clear initiator data on navigation. Requests collected before a
+    // navigation (e.g. the POST that triggered it) stay inspectable afterwards,
+    // so their initiators must survive too. The map is instead bounded by a
+    // FIFO cap enforced at insertion time.
   }
 }

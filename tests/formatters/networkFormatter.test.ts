@@ -89,6 +89,21 @@ test('rejects pending response exports without waiting for a response', async ()
   );
 });
 
+test('rejects an unknown outputPart instead of returning undefined', async () => {
+  // Guards against the "Cannot read properties of undefined (reading 'data')"
+  // failure when outputPart arrives undefined and the switch falls through.
+  const request = createPendingRequest();
+
+  await assert.rejects(
+    () =>
+      exportNetworkRequestPart(
+        request,
+        'bogus' as Parameters<typeof exportNetworkRequestPart>[1],
+      ),
+    /Unknown outputPart/,
+  );
+});
+
 test('allows pending request-side exports', async () => {
   const request = createPendingRequest();
 

@@ -87,7 +87,6 @@ export const listNetworkRequests = defineTool({
     includePreservedRequests: zod
       .boolean()
       .default(false)
-      .optional()
       .describe(
         'Set to true to return the preserved requests over the last 3 navigations.',
       ),
@@ -100,7 +99,6 @@ export const listNetworkRequests = defineTool({
     outputPart: zod
       .enum(NETWORK_EXPORT_PARTS)
       .default('all')
-      .optional()
       .describe(
         'Which part to export when outputFile is provided. "responseHeaders" saves response headers as JSON while preserving repeated headers such as Set-Cookie, "responseBody" saves raw response bytes, "requestBody" saves captured request body bytes, "queryParams" saves parsed URL query parameters as JSON, and "all" saves a JSON bundle with metadata, headers, query params, and body content/metadata. Defaults to "all".',
       ),
