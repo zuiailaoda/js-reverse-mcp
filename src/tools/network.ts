@@ -35,6 +35,18 @@ const FILTERABLE_RESOURCE_TYPES = [
   'other',
 ] as const;
 
+// HTTP request methods for filtering (matched case-insensitively against
+// request.method()).
+const HTTP_METHODS = [
+  'GET',
+  'POST',
+  'PUT',
+  'DELETE',
+  'PATCH',
+  'HEAD',
+  'OPTIONS',
+] as const;
+
 const NETWORK_EXPORT_PARTS = [
   'all',
   'responseHeaders',
@@ -45,7 +57,7 @@ const NETWORK_EXPORT_PARTS = [
 
 export const listNetworkRequests = defineTool({
   name: 'list_network_requests',
-  description: `List network requests for the currently selected page since the last navigation. Results are sorted newest-first and include request start time plus duration. By default returns the 20 most recent requests; use pageSize/pageIdx to paginate. List output is an index: it shows status, summarized long URLs, and Set-Cookie names, not header/body contents. Pass reqid to inspect one request with timing, bounded inline headers where sensitive values such as Cookie, Authorization, and token-like headers are redacted, content-type-aware body previews, and a dedicated Set-Cookie section that shows raw values up to 1KB total. When exact bytes, full bodies, replay inputs, signature inputs, large request bodies, long GET query payloads, binary responses, full headers, full Set-Cookie values, or data for external decoding are needed, pass reqid with outputFile to export the selected data. For GET requests, payload-like data means parsed URL query parameters.`,
+  description: `List network requests for the currently selected page. By default this includes requests retained from before the current navigation (set includePreservedRequests=false to limit to the current navigation only). Results are sorted newest-first and include request start time plus duration. By default returns the 20 most recent requests; use pageSize/pageIdx to paginate. Narrow the list with filters: methods (HTTP verb, e.g. ["POST"] to find form/credential/signature submissions), resourceTypes (resource category such as xhr/fetch/document — NOT the HTTP verb), and urlFilter (URL substring). Filters combine with AND; multiple values within one filter combine with OR. List output is an index: it shows status, summarized long URLs, and Set-Cookie names, not header/body contents. Pass reqid to inspect one request with timing, bounded inline headers where sensitive values such as Cookie, Authorization, and token-like headers are redacted, content-type-aware body previews, and a dedicated Set-Cookie section that shows raw values up to 1KB total. When exact bytes, full bodies, replay inputs, signature inputs, large request bodies, long GET query payloads, binary responses, full headers, full Set-Cookie values, or data for external decoding are needed, pass reqid with outputFile to export the selected data. For GET requests, payload-like data means parsed URL query parameters.`,
   annotations: {
     category: ToolCategory.NETWORK,
     // Not read-only due to outputFile export support.
@@ -72,11 +84,17 @@ export const listNetworkRequests = defineTool({
       .describe(
         'Page number to return (0-based). When omitted, returns the first page.',
       ),
+    methods: zod
+      .array(zod.enum(HTTP_METHODS))
+      .optional()
+      .describe(
+        'Filter requests by HTTP method (the request verb). Matched case-insensitively. Pass one or more of GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS; multiple values are OR-ed (e.g. ["POST"] shows only POSTs, ["GET","POST"] shows both). Use this to hunt for submissions (POST/PUT/PATCH) versus reads (GET). This is the HTTP verb, distinct from resourceTypes which filters by resource category (xhr, document, ...). When omitted or empty, methods are not filtered.',
+      ),
     resourceTypes: zod
       .array(zod.enum(FILTERABLE_RESOURCE_TYPES))
       .optional()
       .describe(
-        'Filter requests to only return requests of the specified resource types. When omitted or empty, returns all requests.',
+        'Filter requests to only return requests of the specified resource types (xhr, fetch, document, script, ...). This is the resource category, NOT the HTTP verb — use methods for GET/POST filtering. When omitted or empty, returns all requests.',
       ),
     urlFilter: zod
       .string()
@@ -86,9 +104,9 @@ export const listNetworkRequests = defineTool({
       ),
     includePreservedRequests: zod
       .boolean()
-      .default(false)
+      .default(true)
       .describe(
-        'Set to true to return the preserved requests over the last 3 navigations.',
+        'When true (the default), include requests retained from before the current navigation — so the request that triggered a navigation (e.g. a login POST that caused a redirect, or a pre-redirect beacon) stays visible after the page has moved on. Set to false to limit the list to the current navigation only, for a cleaner view of what is happening right now. Retained requests are bounded by a recency cap, so the very oldest may roll off on long sessions.',
       ),
     outputFile: zod
       .string()
@@ -141,6 +159,7 @@ export const listNetworkRequests = defineTool({
     response.setIncludeNetworkRequests(true, {
       pageSize: request.params.pageSize,
       pageIdx: request.params.pageIdx,
+      methods: request.params.methods,
       resourceTypes: request.params.resourceTypes,
       urlFilter: request.params.urlFilter,
       includePreservedRequests: request.params.includePreservedRequests,

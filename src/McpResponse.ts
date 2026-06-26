@@ -53,6 +53,7 @@ export class McpResponse implements Response {
   #networkRequestsOptions?: {
     include: boolean;
     pagination?: PaginationOptions;
+    methods?: string[];
     resourceTypes?: string[];
     urlFilter?: string;
     includePreservedRequests?: boolean;
@@ -79,6 +80,7 @@ export class McpResponse implements Response {
   setIncludeNetworkRequests(
     value: boolean,
     options?: PaginationOptions & {
+      methods?: string[];
       resourceTypes?: string[];
       urlFilter?: string;
       includePreservedRequests?: boolean;
@@ -99,6 +101,7 @@ export class McpResponse implements Response {
               pageIdx: options.pageIdx,
             }
           : undefined,
+      methods: options?.methods,
       resourceTypes: options?.resourceTypes,
       urlFilter: options?.urlFilter,
       includePreservedRequests: options?.includePreservedRequests,
@@ -407,6 +410,18 @@ export class McpResponse implements Response {
       let requests = context.getNetworkRequests(
         this.#networkRequestsOptions?.includePreservedRequests,
       );
+
+      // Apply HTTP method filtering if specified (case-insensitive)
+      if (this.#networkRequestsOptions.methods?.length) {
+        const normalizedMethods = new Set(
+          this.#networkRequestsOptions.methods.map(method =>
+            method.toUpperCase(),
+          ),
+        );
+        requests = requests.filter(request =>
+          normalizedMethods.has(request.method().toUpperCase()),
+        );
+      }
 
       // Apply resource type filtering if specified
       if (this.#networkRequestsOptions.resourceTypes?.length) {

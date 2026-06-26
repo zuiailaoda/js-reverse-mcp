@@ -56,6 +56,7 @@ export interface Response {
   setIncludeNetworkRequests(
     value: boolean,
     options?: PaginationOptions & {
+      methods?: string[];
       resourceTypes?: string[];
       urlFilter?: string;
       includePreservedRequests?: boolean;

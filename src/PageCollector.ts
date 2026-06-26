@@ -140,6 +140,13 @@ export const networkRequestObservedAtSymbol = Symbol(
  */
 export const responseBodyCacheSymbol = Symbol('responseBodyCacheSymbol');
 
+/**
+ * Resolved size in bytes of the cached response body that was counted against
+ * the per-page budget. Read synchronously when a request is evicted, so its
+ * bytes can be reclaimed from the budget.
+ */
+const responseBodySizeSymbol = Symbol('responseBodySizeSymbol');
+
 export type CachedResponseBody =
   | {ok: true; buffer: Buffer}
   | {ok: false; error: string}
@@ -156,6 +163,16 @@ export const MAX_CACHED_BODY_BYTES = 5 * 1024 * 1024;
  * responses are marked skipped rather than cached.
  */
 export const MAX_CACHED_TOTAL_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Upper bound on retained network request records per page. Buckets are
+ * returned in full to keep records reachable, so this FIFO cap (oldest
+ * navigation buckets dropped first) is the memory safety valve, symmetric with
+ * MAX_INITIATOR_ENTRIES. Evicting a record also reclaims its cached body bytes
+ * from the per-page budget, making that budget a rolling window rather than a
+ * one-way ratchet.
+ */
+const MAX_RETAINED_REQUESTS = 5000;
 
 const BODY_CAPTURE_TIMEOUT_MS = 5000;
 
@@ -558,6 +575,7 @@ type RequestWithNetworkMetadata = HTTPRequest & {
   [cdpRequestIdSymbol]?: string;
   [networkRequestObservedAtSymbol]?: number;
   [responseBodyCacheSymbol]?: Promise<CachedResponseBody>;
+  [responseBodySizeSymbol]?: number;
 };
 
 /**
@@ -627,6 +645,8 @@ function captureResponseBody(req: HTTPRequest): void {
         }
         budget.bytes += buffer.length;
         responseBodyBudget.set(page, budget);
+        // Record the counted size so eviction can reclaim it from the budget.
+        request[responseBodySizeSymbol] = buffer.length;
       }
       return {ok: true, buffer};
     } catch (error) {
@@ -847,13 +867,59 @@ export class NetworkCollector extends PageCollector<HTTPRequest> {
     if (lastRequestIdx !== -1) {
       const fromCurrentNavigation = requests.splice(lastRequestIdx);
       navigations.unshift(fromCurrentNavigation);
-    } else {
+    } else if (requests.length > 0) {
+      // No navigation request was captured (e.g. a client-side redirect): the
+      // whole current bucket belongs to the previous navigation, so start a
+      // fresh bucket. Skip when it is already empty to avoid piling up empty
+      // buckets across redirect chains.
       navigations.unshift([]);
     }
+
+    this.#enforceRetentionLimit(page, navigations);
 
     // Do NOT clear initiator data on navigation. Requests collected before a
     // navigation (e.g. the POST that triggered it) stay inspectable afterwards,
     // so their initiators must survive too. The map is instead bounded by a
     // FIFO cap enforced at insertion time.
+  }
+
+  /**
+   * Memory safety valve for the unbounded "return all buckets" retention: drop
+   * the oldest navigation buckets once the total retained record count exceeds
+   * the cap, reclaiming each evicted request's cached body bytes from the
+   * per-page budget. The current navigation bucket (index 0) is never evicted.
+   */
+  #enforceRetentionLimit(page: Page, navigations: HTTPRequest[][]): void {
+    let total = 0;
+    for (const bucket of navigations) {
+      total += bucket.length;
+    }
+
+    while (total > MAX_RETAINED_REQUESTS && navigations.length > 1) {
+      const evicted = navigations.pop();
+      if (!evicted) {
+        break;
+      }
+      total -= evicted.length;
+      this.#reclaimResponseBodyBudget(page, evicted);
+    }
+  }
+
+  #reclaimResponseBodyBudget(page: Page, evicted: HTTPRequest[]): void {
+    const budget = responseBodyBudget.get(page);
+    if (!budget) {
+      return;
+    }
+    for (const request of evicted) {
+      const size = (request as RequestWithNetworkMetadata)[
+        responseBodySizeSymbol
+      ];
+      if (typeof size === 'number') {
+        budget.bytes -= size;
+      }
+    }
+    if (budget.bytes < 0) {
+      budget.bytes = 0;
+    }
   }
 }

@@ -91,3 +91,42 @@ test('preserved requests survive more than the old navigation window', () => {
     'default view should only show the current navigation',
   );
 });
+
+test('evicts the oldest requests once past the retention cap', () => {
+  const collector = createCollector();
+  const {page, mainFrame} = createFakePage();
+  collector.addPage(page);
+  const emit = (event: string, arg: unknown) =>
+    (page as unknown as {emit(e: string, a: unknown): void}).emit(event, arg);
+  const subframe = {id: 'sub'};
+
+  let firstRoundReq: HTTPRequest | undefined;
+  let lastRoundReq: HTTPRequest | undefined;
+
+  // Six navigations of 1000 requests each = 6000 retained records; the cap is
+  // 5000, so the oldest navigation bucket must be evicted.
+  for (let round = 0; round < 6; round++) {
+    for (let i = 0; i < 1000; i++) {
+      const req = createFakeRequest(`https://x/r${round}-${i}`, subframe);
+      if (round === 0 && i === 0) {
+        firstRoundReq = req;
+      }
+      if (round === 5 && i === 0) {
+        lastRoundReq = req;
+      }
+      emit('request', req);
+    }
+    emit('framenavigated', mainFrame);
+  }
+
+  const all = collector.getData(page, true);
+  assert.equal(all.length, 5000, 'retained records should be capped at 5000');
+  assert.ok(
+    !all.includes(firstRoundReq as HTTPRequest),
+    'the oldest navigation bucket should be evicted',
+  );
+  assert.ok(
+    all.includes(lastRoundReq as HTTPRequest),
+    'the newest navigations should be retained',
+  );
+});
