@@ -8,13 +8,11 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 import {
-  cookieRelationMatches,
   exportNetworkRequestPart,
-  getCookieRelationMarker,
-  getCookieRelationMatch,
   getFormattedHeaderEntries,
   getFormattedResponseBody,
   getFormattedSetCookieEntries,
+  getSetCookieFlowValues,
   getShortDescriptionForRequestAsync,
   getStatusFromRequestAsync,
   headersContainSensitiveValues,
@@ -70,31 +68,22 @@ test('formats Set-Cookie entries as name=value and omits long values', () => {
   );
 });
 
-test('matches requests that send or update a named cookie', async () => {
+test('extracts target Set-Cookie flow values from response headers only', async () => {
+  const longValue = 'x'.repeat(513);
   const request = createCookieRequest({
-    requestCookie: 'sid=abc; theme=light',
-    setCookieHeaders: ['sid=def; Path=/', 'risk=xyz; Path=/'],
+    requestCookie: '_abck=request-value; theme=light',
+    setCookieHeaders: [
+      '_abck=first; Path=/',
+      'sid=def; Path=/',
+      `_abck=${longValue}; Path=/; Secure`,
+    ],
   });
 
-  const sidAll = await getCookieRelationMatch(request, 'sid', 'all');
-  assert.deepEqual(sidAll, {sends: true, updates: true});
-  assert.equal(cookieRelationMatches(sidAll, 'all'), true);
-  assert.equal(
-    getCookieRelationMarker(sidAll, 'sid'),
-    ' sends-cookie: sid sets-cookie: sid',
-  );
-
-  const riskUpdates = await getCookieRelationMatch(request, 'risk', 'updates');
-  assert.deepEqual(riskUpdates, {sends: false, updates: true});
-  assert.equal(cookieRelationMatches(riskUpdates, 'updates'), true);
-
-  const themeSends = await getCookieRelationMatch(request, 'theme', 'sends');
-  assert.deepEqual(themeSends, {sends: true, updates: false});
-  assert.equal(cookieRelationMatches(themeSends, 'sends'), true);
-
-  const missing = await getCookieRelationMatch(request, 'missing', 'all');
-  assert.deepEqual(missing, {sends: false, updates: false});
-  assert.equal(cookieRelationMatches(missing, 'all'), false);
+  assert.deepEqual(await getSetCookieFlowValues(request, '_abck'), [
+    '_abck=first',
+    '_abck=<omitted; value length 513 chars>',
+  ]);
+  assert.deepEqual(await getSetCookieFlowValues(request, 'theme'), []);
 });
 
 test('formats pending request list entries without waiting for a response', async () => {

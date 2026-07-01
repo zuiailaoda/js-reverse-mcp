@@ -35,28 +35,12 @@ test('methods is unset when omitted (no filtering)', () => {
   assert.equal(parsed.methods, undefined);
 });
 
-test('cookieName trims input and cookieRelation defaults to updates', () => {
+test('cookieName trims input and enters Set-Cookie flow mode', () => {
   const schema = zod.object(listNetworkRequests.schema);
   const parsed = schema.parse({cookieName: ' _abck '});
 
   assert.equal(parsed.cookieName, '_abck');
-  assert.equal(parsed.cookieRelation, 'updates');
-});
-
-test('cookieRelation accepts supported relations and rejects unknown ones', () => {
-  const schema = zod.object(listNetworkRequests.schema);
-
-  assert.equal(
-    schema.parse({cookieName: 'sid', cookieRelation: 'sends'}).cookieRelation,
-    'sends',
-  );
-  assert.equal(
-    schema.parse({cookieName: 'sid', cookieRelation: 'all'}).cookieRelation,
-    'all',
-  );
-  assert.throws(() =>
-    schema.parse({cookieName: 'sid', cookieRelation: 'reads'}),
-  );
+  assert.equal('cookieRelation' in listNetworkRequests.schema, false);
 });
 
 test('cookieName rejects blank input', () => {

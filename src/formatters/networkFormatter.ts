@@ -62,13 +62,6 @@ export type NetworkExportPart =
   | 'requestBody'
   | 'queryParams';
 
-export type CookieRelation = 'updates' | 'sends' | 'all';
-
-export interface CookieRelationMatch {
-  sends: boolean;
-  updates: boolean;
-}
-
 interface QueryPayload {
   queryString: string;
   params: Record<string, string | string[]>;
@@ -322,56 +315,20 @@ export function getFormattedSetCookieEntries(
   const entryLabel = setCookieHeaders.length === 1 ? 'entry' : 'entries';
   return [
     `${setCookieHeaders.length} ${entryLabel}`,
-    ...setCookieHeaders.map(formatSetCookieNameValue),
+    ...setCookieHeaders.map(header => `- ${formatSetCookieNameValue(header)}`),
   ];
 }
 
-export async function getCookieRelationMatch(
+export async function getSetCookieFlowRequestLine(
   request: HTTPRequest,
-  cookieName: string,
-  relation: CookieRelation,
-): Promise<CookieRelationMatch> {
-  const match: CookieRelationMatch = {
-    sends: false,
-    updates: false,
-  };
-
-  if (relation !== 'updates') {
-    match.sends = await requestSendsCookie(request, cookieName);
-  }
-
-  if (relation !== 'sends') {
-    match.updates = await requestUpdatesCookie(request, cookieName);
-  }
-
-  return match;
-}
-
-export function cookieRelationMatches(
-  match: CookieRelationMatch,
-  relation: CookieRelation,
-): boolean {
-  if (relation === 'updates') {
-    return match.updates;
-  }
-  if (relation === 'sends') {
-    return match.sends;
-  }
-  return match.updates || match.sends;
-}
-
-export function getCookieRelationMarker(
-  match: CookieRelationMatch,
-  cookieName: string,
-): string {
-  const markers: string[] = [];
-  if (match.sends) {
-    markers.push(`sends-cookie: ${cookieName}`);
-  }
-  if (match.updates) {
-    markers.push(`sets-cookie: ${cookieName}`);
-  }
-  return markers.length ? ` ${markers.join(' ')}` : '';
+  id: number,
+  selectedInDevToolsUI = false,
+): Promise<string> {
+  const httpResponse = await getResponseIfCompleted(request);
+  const status = httpResponse
+    ? String(httpResponse.status())
+    : await getStatusFromRequestAsync(request);
+  return `[${id}] ${status} ${request.method()} ${getUrlForList(request.url())}${selectedInDevToolsUI ? ` [selected in the DevTools Network panel]` : ''}`;
 }
 
 export async function getFormattedResponseBody(
@@ -1108,46 +1065,45 @@ function getSetCookieName(setCookieHeader: string): string {
   return parseSetCookieNameValue(setCookieHeader)?.name ?? '<unnamed>';
 }
 
-async function requestSendsCookie(
+export async function getSetCookieFlowValues(
   request: HTTPRequest,
   cookieName: string,
-): Promise<boolean> {
-  const requestHeaders = await getRequestHeadersArray(request).catch(() => []);
-  return requestHeaders.some(
-    ({name, value}) =>
-      name.toLowerCase() === 'cookie' &&
-      getCookieHeaderNames(value).includes(cookieName),
-  );
-}
-
-async function requestUpdatesCookie(
-  request: HTTPRequest,
-  cookieName: string,
-): Promise<boolean> {
+): Promise<string[]> {
   const httpResponse = await getResponseIfCompleted(request);
   if (!httpResponse) {
-    return false;
+    return [];
   }
 
   const responseHeaders = await getResponseHeadersArray(httpResponse).catch(
     () => [],
   );
-  return getSetCookieHeaders(responseHeaders).some(
-    setCookieHeader => getSetCookieName(setCookieHeader) === cookieName,
-  );
+  return getSetCookieHeaders(responseHeaders)
+    .map(parseSetCookieNameValue)
+    .filter(
+      (parsed): parsed is {name: string; value: string} =>
+        parsed?.name === cookieName,
+    )
+    .map(parsed => formatSetCookieNameValueFromParsed(parsed));
 }
 
 function formatSetCookieNameValue(setCookieHeader: string): string {
   const parsed = parseSetCookieNameValue(setCookieHeader);
   if (!parsed) {
-    return `- <unparseable Set-Cookie; ${setCookieHeader.length} chars>`;
+    return `<unparseable Set-Cookie; ${setCookieHeader.length} chars>`;
   }
 
+  return formatSetCookieNameValueFromParsed(parsed);
+}
+
+function formatSetCookieNameValueFromParsed(parsed: {
+  name: string;
+  value: string;
+}): string {
   if (parsed.value.length <= SET_COOKIE_VALUE_INLINE_LIMIT) {
-    return `- ${parsed.name}=${parsed.value}`;
+    return `${parsed.name}=${parsed.value}`;
   }
 
-  return `- ${parsed.name}=<omitted; value length ${parsed.value.length} chars>`;
+  return `${parsed.name}=<omitted; value length ${parsed.value.length} chars>`;
 }
 
 function parseSetCookieNameValue(

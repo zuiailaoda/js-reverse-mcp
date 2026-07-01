@@ -55,11 +55,9 @@ const NETWORK_EXPORT_PARTS = [
   'queryParams',
 ] as const;
 
-const COOKIE_RELATIONS = ['updates', 'sends', 'all'] as const;
-
 export const listNetworkRequests = defineTool({
   name: 'list_network_requests',
-  description: `List network requests for the currently selected page. Requests are held in a flat FIFO queue that is not cleared on navigation, so a request that already fired (e.g. a login POST that caused a redirect, or a pre-redirect beacon) stays inspectable after the page moves on; the queue keeps the most recent 5000 requests and the oldest roll off. To establish a clean baseline before the action you want to study (the DevTools "clear, then act" workflow), call clear_network_requests first. Results are sorted newest-first and include request start time plus duration. By default returns the 20 most recent requests; use pageSize/pageIdx to paginate. Narrow the list with filters: methods (HTTP verb, e.g. ["POST"] to find form/credential/signature submissions), resourceTypes (resource category such as xhr/fetch/document — NOT the HTTP verb), urlFilter (URL substring), and cookieName. Filters combine with AND; multiple values within one filter combine with OR. With cookieName, cookieRelation defaults to "updates" so the list shows only responses that set/update that cookie; use "sends" to show requests carrying it in the Cookie header, or "all" for either relation. List output is an index: it shows status, summarized long URLs, and Set-Cookie names, not header/body contents. Pass reqid to inspect one request with timing, bounded inline headers where sensitive values such as Cookie, Authorization, and token-like headers are redacted, content-type-aware body previews, and a dedicated Set-Cookie section that shows cookie name=value pairs: values up to 512 chars are shown inline, longer values show only their length. When exact bytes, full bodies, replay inputs, signature inputs, large request bodies, long GET query payloads, binary responses, full headers, full Set-Cookie values, or data for external decoding are needed, pass reqid with outputFile to export the selected data. For GET requests, payload-like data means parsed URL query parameters.`,
+  description: `List network requests for the currently selected page. Requests are held in a flat FIFO queue that is not cleared on navigation, so a request that already fired (e.g. a login POST that caused a redirect, or a pre-redirect beacon) stays inspectable after the page moves on; the queue keeps the most recent 5000 requests and the oldest roll off. To establish a clean baseline before the action you want to study (the DevTools "clear, then act" workflow), call clear_network_requests first. Without cookieName, results are sorted newest-first and include request start time plus duration; by default returns the 20 most recent requests, and pageSize/pageIdx paginate. Narrow the normal list with filters: methods (HTTP verb, e.g. ["POST"] to find form/credential/signature submissions), resourceTypes (resource category such as xhr/fetch/document — NOT the HTTP verb), and urlFilter (URL substring). Filters combine with AND; multiple values within one filter combine with OR. With cookieName, this tool switches to Set-Cookie flow mode for that exact response cookie name: it returns every currently captured response that set/updated the cookie, oldest-first, from the first captured Set-Cookie update through the latest captured update. Set-Cookie flow ignores pageSize/pageIdx and is not capped by the default pageSize; when using cookieName, omit pageSize/pageIdx. Each flow entry shows the request id/status/method/URL and the target cookie name=value; values up to 512 chars are shown inline, longer values show only their length. Request Cookie headers are not part of this flow view; pass reqid to inspect one request, or use outputFile with outputPart="all" when exact raw headers are needed. Normal list output is an index: it shows status, summarized long URLs, and Set-Cookie names, not header/body contents. Pass reqid to inspect one request with timing, bounded inline headers where sensitive values such as Cookie, Authorization, and token-like headers are redacted, content-type-aware body previews, and a dedicated Set-Cookie section that shows cookie name=value pairs: values up to 512 chars are shown inline, longer values show only their length. When exact bytes, full bodies, replay inputs, signature inputs, large request bodies, long GET query payloads, binary responses, full headers, full Set-Cookie values, or data for external decoding are needed, pass reqid with outputFile to export the selected data. For GET requests, payload-like data means parsed URL query parameters.`,
   annotations: {
     category: ToolCategory.NETWORK,
     // Not read-only due to outputFile export support.
@@ -77,14 +75,16 @@ export const listNetworkRequests = defineTool({
       .int()
       .positive()
       .optional()
-      .describe('Maximum number of requests to return. Defaults to 20.'),
+      .describe(
+        'Maximum number of requests to return for the normal network list. Defaults to 20. Ignored when cookieName is provided because Set-Cookie flow returns all matching captured updates.',
+      ),
     pageIdx: zod
       .number()
       .int()
       .min(0)
       .optional()
       .describe(
-        'Page number to return (0-based). When omitted, returns the first page.',
+        'Page number to return for the normal network list (0-based). When omitted, returns the first page. Ignored when cookieName is provided because Set-Cookie flow returns all matching captured updates.',
       ),
     methods: zod
       .array(zod.enum(HTTP_METHODS))
@@ -110,13 +110,7 @@ export const listNetworkRequests = defineTool({
       .min(1)
       .optional()
       .describe(
-        'Filter requests by an exact cookie name. By default this returns only responses that set/update this cookie. Combine with cookieRelation="sends" to find requests carrying the cookie, or cookieRelation="all" to show both sends and updates.',
-      ),
-    cookieRelation: zod
-      .enum(COOKIE_RELATIONS)
-      .default('updates')
-      .describe(
-        'How cookieName should match requests: "updates" matches response Set-Cookie entries for that cookie, "sends" matches request Cookie headers carrying that cookie, and "all" matches either relation. Defaults to "updates".',
+        'Switch to Set-Cookie flow mode for an exact response cookie name. Returns all currently captured responses that set/update this cookie, oldest-first, and shows the target cookie name=value for each update. Do not pass pageSize/pageIdx with cookieName; Set-Cookie flow ignores pagination and returns all matching captured updates. Does not match request Cookie headers.',
       ),
     outputFile: zod
       .string()
@@ -173,7 +167,6 @@ export const listNetworkRequests = defineTool({
       resourceTypes: request.params.resourceTypes,
       urlFilter: request.params.urlFilter,
       cookieName: request.params.cookieName,
-      cookieRelation: request.params.cookieRelation,
       networkRequestIdInDevToolsUI: reqid,
     });
   },
