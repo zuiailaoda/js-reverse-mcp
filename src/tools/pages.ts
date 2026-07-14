@@ -9,12 +9,15 @@ import {zod} from '../third_party/index.js';
 import {normalizeToolError, ToolError} from '../ToolError.js';
 
 import {ToolCategory} from './categories.js';
+import {healPausedNavigation} from './navigationHealing.js';
 import {
   createToolOutputSchema,
   defineTool,
   PAGINATION_OUTPUT_SCHEMA,
   timeoutSchema,
 } from './ToolDefinition.js';
+
+// [LOCAL FORK] auto-heal navigation when paused at a breakpoint
 
 // Default navigation timeout in milliseconds (10 seconds)
 const DEFAULT_NAV_TIMEOUT = 10000;
@@ -301,8 +304,13 @@ export const navigatePage = defineTool({
               'Note: Any previously obtained script IDs are now invalid. Use script URLs instead.',
             );
           } else if (result.status === 'paused' || debugger_.isPaused()) {
-            response.appendResponseLine(
-              `Navigation to ${targetUrl} started but execution is paused at a breakpoint. Use get_paused_info to inspect, then resume to continue loading.`,
+            // [LOCAL FORK] auto-heal: clear breakpoints + resume + wait
+            navigationCompleted = await healPausedNavigation(
+              debugger_,
+              page,
+              response,
+              options.timeout,
+              `Navigation to ${targetUrl}`,
             );
           } else {
             await rebuildScriptsAfterNavigationFailure(context, debugger_);
@@ -338,8 +346,13 @@ export const navigatePage = defineTool({
               'Note: Any previously obtained script IDs are now invalid. Use script URLs instead.',
             );
           } else if (result.status === 'paused' || debugger_.isPaused()) {
-            response.appendResponseLine(
-              `Navigation back started but execution is paused at a breakpoint. Use get_paused_info to inspect, then resume to continue loading.`,
+            // [LOCAL FORK] auto-heal: clear breakpoints + resume + wait
+            navigationCompleted = await healPausedNavigation(
+              debugger_,
+              page,
+              response,
+              options.timeout,
+              'Navigation back',
             );
           } else {
             await rebuildScriptsAfterNavigationFailure(context, debugger_);
@@ -375,8 +388,13 @@ export const navigatePage = defineTool({
               'Note: Any previously obtained script IDs are now invalid. Use script URLs instead.',
             );
           } else if (result.status === 'paused' || debugger_.isPaused()) {
-            response.appendResponseLine(
-              `Navigation forward started but execution is paused at a breakpoint. Use get_paused_info to inspect, then resume to continue loading.`,
+            // [LOCAL FORK] auto-heal: clear breakpoints + resume + wait
+            navigationCompleted = await healPausedNavigation(
+              debugger_,
+              page,
+              response,
+              options.timeout,
+              'Navigation forward',
             );
           } else {
             await rebuildScriptsAfterNavigationFailure(context, debugger_);
@@ -404,8 +422,13 @@ export const navigatePage = defineTool({
               'Note: Any previously obtained script IDs are now invalid. Use script URLs instead.',
             );
           } else if (result.status === 'paused' || debugger_.isPaused()) {
-            response.appendResponseLine(
-              `Page reload started but execution is paused at a breakpoint. Use get_paused_info to inspect, then resume to continue loading.`,
+            // [LOCAL FORK] auto-heal: clear breakpoints + resume + wait
+            navigationCompleted = await healPausedNavigation(
+              debugger_,
+              page,
+              response,
+              options.timeout,
+              'Page reload',
             );
           } else {
             await rebuildScriptsAfterNavigationFailure(context, debugger_);

@@ -43,6 +43,8 @@ import * as consoleTools from './tools/console.js';
 import * as debuggerTools from './tools/debugger.js';
 import * as frameTools from './tools/frames.js';
 import * as interactionTools from './tools/interaction.js';
+// [LOCAL FORK] fork-only tools aggregated in one module (see localIndex.ts)
+import * as localTools from './tools/localIndex.js';
 import * as networkTools from './tools/network.js';
 import * as pagesTools from './tools/pages.js';
 import * as screenshotTools from './tools/screenshot.js';
@@ -114,6 +116,8 @@ async function getContext(): Promise<McpContext> {
       isolated: args.isolated,
       logFile,
       cloak: args.cloak,
+      // [LOCAL FORK] pass through custom profile path
+      userDataDir: args.userDataDir,
     });
   }
 
@@ -264,6 +268,9 @@ const tools = [
   ...Object.values(siteDataTools),
 
   ...Object.values(websocketTools),
+
+  // [LOCAL FORK] register all fork-only tools (see tools/localIndex.ts)
+  ...Object.values(localTools),
 ].filter(tool => {
   return (
     typeof tool === 'object' &&

@@ -18,6 +18,7 @@ import {NetworkCollector, ConsoleCollector} from './PageCollector.js';
 import type {ListenerMap, RequestInitiator} from './PageCollector.js';
 import type {
   BrowserContext,
+  CDPSession,
   ConsoleMessage,
   Debugger,
   Dialog,
@@ -249,6 +250,14 @@ export class McpContext implements Context {
       this.#initializedCapabilities.delete('debugger');
       throw error;
     }
+  }
+
+  // [LOCAL FORK] Expose the cached CDP session to fork-only tools
+  // (snapshot / intercept / emulate). Delegates to the shared provider so
+  // repeated calls for the same page reuse one session — required by
+  // intercept.ts, which registers long-lived Fetch listeners on it.
+  getCdpSession(page: Page): Promise<CDPSession> {
+    return this.sessionProvider.getSession(page);
   }
 
   /**

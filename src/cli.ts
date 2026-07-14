@@ -31,6 +31,13 @@ export const cliOptions = {
       'Create a temporary user-data-dir that is auto-cleaned when the browser closes. Use this for runs where you do NOT want cookies/localStorage to persist into your default profile.',
     default: false,
   },
+  // [LOCAL FORK] custom persistent profile path (underlying McpLaunchOptions
+  // already supports userDataDir; this just re-exposes the CLI flag).
+  userDataDir: {
+    type: 'string',
+    description:
+      'Custom persistent user-data-dir path for Chrome, overriding the default profile location. Ignored when --isolated or --browserUrl is used.',
+  },
   logFile: {
     type: 'string',
     describe:

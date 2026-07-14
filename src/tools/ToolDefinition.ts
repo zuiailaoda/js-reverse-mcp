@@ -8,7 +8,13 @@ import type {DebuggerContext} from '../DebuggerContext.js';
 import type {TrafficSummary} from '../formatters/websocketFormatter.js';
 import type {RequestInitiator} from '../PageCollector.js';
 import {zod} from '../third_party/index.js';
-import type {Dialog, Frame, HTTPRequest, Page} from '../third_party/index.js';
+import type {
+  CDPSession,
+  Dialog,
+  Frame,
+  HTTPRequest,
+  Page,
+} from '../third_party/index.js';
 import {TOOL_ERROR_CODES} from '../ToolError.js';
 import type {PaginationOptions} from '../utils/types.js';
 import type {WebSocketData} from '../WebSocketCollector.js';
@@ -235,6 +241,10 @@ export type Context = Readonly<{
    */
   resetSelectedFrame(): Promise<void>;
   ensureCapabilities(capabilities: readonly ToolCapability[]): Promise<void>;
+  // [LOCAL FORK] Cached CDP session accessor for fork-only tools
+  // (snapshot / intercept / emulate). Delegates to the shared
+  // CdpSessionProvider so repeated calls for one page reuse a session.
+  getCdpSession(page: Page): Promise<CDPSession>;
 }>;
 
 export function defineTool<Schema extends zod.ZodRawShape>(

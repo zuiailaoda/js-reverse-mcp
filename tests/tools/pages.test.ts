@@ -73,10 +73,13 @@ test('returns paused only after the stopped navigation settles', async () => {
   assert.deepEqual(result, {status: 'paused'});
 });
 
-test('navigate_page can return paused without auto-resuming', async () => {
+// [LOCAL FORK] Upstream returns paused WITHOUT resuming; this fork auto-clears
+// breakpoints and resumes, then re-waits for load (see tools/navigationHealing.ts).
+// Test rewritten to assert the fork's auto-heal behavior.
+test('navigate_page auto-heals when paused at a breakpoint', async () => {
   let resumeCalls = 0;
   let reloadCalls = 0;
-  let clearScriptsCalls = 0;
+  let waitLoadCalls = 0;
   let includePages = false;
   const lines: string[] = [];
   const navigation = Promise.withResolvers<void>();
@@ -96,17 +99,21 @@ test('navigate_page can return paused without auto-resuming', async () => {
           return navigation.promise;
         },
         url: () => 'https://example.test/',
+        waitForLoadState: async () => {
+          waitLoadCalls++;
+        },
       }),
       debuggerContext: {
         isEnabled: () => true,
         isPaused: () => true,
-        clearScripts: () => {
-          clearScriptsCalls++;
-        },
+        clearScripts: () => undefined,
+        getXHRBreakpoints: () => [],
+        getBreakpoints: () => [],
         resume: () => {
           resumeCalls++;
           return Promise.resolve();
         },
+        restoreXHRBreakpoints: async () => undefined,
       },
       stopPageLoading: async () => {
         navigation.reject(new Error('navigation stopped'));
@@ -114,11 +121,11 @@ test('navigate_page can return paused without auto-resuming', async () => {
     } as never,
   );
 
-  assert.equal(resumeCalls, 0);
+  assert.equal(resumeCalls, 1);
   assert.equal(reloadCalls, 1);
-  assert.equal(clearScriptsCalls, 1);
+  assert.equal(waitLoadCalls, 1);
   assert.equal(includePages, true);
-  assert.match(lines.join('\n'), /paused at a breakpoint/);
+  assert.match(lines.join('\n'), /Auto-recovery/);
 });
 
 test('navigate_page propagates navigation failures into the error envelope', async () => {
